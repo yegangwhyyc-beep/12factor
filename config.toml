@@ -1,0 +1,249 @@
+# Trae 项目级配置
+# 仅在受信任项目中生效，会覆盖 ~/.trae/config.toml
+
+# 默认模型
+model = "gpt-5.4"
+
+# 审批模式：suggest / auto-edit / full-auto
+# - suggest: 每次改动需确认（推荐新手）
+# - auto-edit: 文件改动自动，命令需确认
+# - full-auto: 全自动（仅在隔离环境使用）
+approval_mode = "suggest"
+
+# 沙箱策略：read-only / workspace-write / danger-full-access
+sandbox_mode = "workspace-write"
+
+# 上下文管理
+[context]
+# 接近 token 上限时自动压缩
+auto_compact = true
+# 保留最近 N 条消息不压缩
+keep_recent = 10
+
+# ──────────────────────────────────────────────────────────────
+# Agent Loop 运行参数
+# 行为策略（任务分解 / 终止条件 / 错误恢复）见 .trae/loop.md
+# ──────────────────────────────────────────────────────────────
+[loop]
+# 同一错误最大重试次数
+max_retries = 3
+# 单次工具调用超时（秒）
+tool_timeout = 120
+# 单次任务最大修改文件数（超出则暂停询问）
+max_files_changed = 10
+# 子 Agent 最大并发数
+max_subagents = 4
+# Token 使用率阈值（百分比）
+token_warn_threshold = 60    # 提示用户可 /compact
+token_compact_threshold = 80 # 自动 /compact
+token_stop_threshold = 95    # 强制停止 Loop
+# 提交前自检命令（按顺序执行，任一失败则回到 Loop）
+self_check_commands = [
+    "uv run ruff check .",
+    "uv run ruff format --check .",
+    "uv run pytest --cov=app --cov-report=term-missing",
+]
+
+# 通知（macOS）
+[notifications]
+enable = true
+
+# ──────────────────────────────────────────────────────────────
+# Hooks 配置
+# ⚠️ Hooks 已迁移到根目录 hooks.json（独立文件，不再用 config.toml）
+# 定义见 .trae/hooks.md，脚本在 .trae/hooks/
+# Trae 标准位置是 .trae/hooks.json，如根目录 hooks.json 不被读取，
+# 可软链：ln -s ../../hooks.json .trae/hooks.json
+# ──────────────────────────────────────────────────────────────
+
+# 启用 hooks 功能（feature flag）
+[features]
+trae_hooks = true
+
+# ──────────────────────────────────────────────────────────────
+# MCP 服务器配置
+# 文档：https://modelcontextprotocol.io/
+# 沙箱设计见 .trae/sandbox.md
+# 启用前请确认对应服务已就绪（数据库可连、API Token 已注入等）
+# 未启用的 server 用 `enabled = false` 标注，需要时改 true
+# ──────────────────────────────────────────────────────────────
+
+# GitHub —— PR / Issue / 仓库操作
+# 需环境变量 GITHUB_PERSONAL_ACCESS_TOKEN
+[mcp_servers.github]
+command = "npx"
+args = ["-y", "@modelcontextprotocol/server-github"]
+env = { GITHUB_PERSONAL_ACCESS_TOKEN = "${GITHUB_PERSONAL_ACCESS_TOKEN}" }
+
+[mcp_servers.github.sandbox]
+mode = "workspace-write"
+filesystem = ["./"]
+network = "allowlist"
+network_allowlist = ["github.com", "api.github.com"]
+env_allowlist = ["GITHUB_PERSONAL_ACCESS_TOKEN"]
+timeout = 30
+max_memory_mb = 128
+
+# PostgreSQL —— 只读查询 / schema 内省
+# 通过 ${DATABASE_URL} 注入连接串，避免硬编码
+[mcp_servers.postgres]
+command = "npx"
+args = ["-y", "@modelcontextprotocol/server-postgres", "${DATABASE_URL}"]
+enabled = false
+
+[mcp_servers.postgres.sandbox]
+mode = "read-only"
+filesystem = []
+network = "allowlist"
+network_allowlist = ["${PG_HOST}"]
+env_allowlist = ["DATABASE_URL"]
+timeout = 30
+max_memory_mb = 128
+
+# Playwright —— 浏览器自动化 / E2E 测试
+[mcp_servers.playwright]
+command = "npx"
+args = ["-y", "@playwright/mcp"]
+enabled = false
+
+[mcp_servers.playwright.sandbox]
+mode = "none"
+filesystem = []
+network = "all"
+env_allowlist = []
+timeout = 120
+max_memory_mb = 512
+
+# Context7 —— 实时官方文档检索（覆盖主流库）
+[mcp_servers.context7]
+command = "npx"
+args = ["-y", "@upstash/context7-mcp"]
+enabled = true
+
+[mcp_servers.context7.sandbox]
+mode = "none"
+filesystem = []
+network = "allowlist"
+network_allowlist = ["context7.com", "api.context7.com"]
+env_allowlist = []
+timeout = 30
+max_memory_mb = 128
+
+# Filesystem —— 受限文件系统访问（多仓库场景）
+# 默认限定当前项目目录
+[mcp_servers.filesystem]
+command = "npx"
+args = ["-y", "@modelcontextprotocol/server-filesystem", "${PWD}"]
+enabled = false
+
+[mcp_servers.filesystem.sandbox]
+mode = "read-only"
+filesystem = ["./"]
+network = "none"
+env_allowlist = ["PWD"]
+timeout = 60
+max_memory_mb = 256
+
+# Fetch —— 网页抓取转 Markdown（比 curl 友好）
+[mcp_servers.fetch]
+command = "npx"
+args = ["-y", "@modelcontextprotocol/server-fetch"]
+enabled = true
+
+[mcp_servers.fetch.sandbox]
+mode = "none"
+filesystem = []
+network = "all"
+env_allowlist = []
+timeout = 30
+max_memory_mb = 128
+
+# Memory —— 跨会话记忆 / 知识图谱
+# 数据存于 ~/.trae/mcp-memory/
+[mcp_servers.memory]
+command = "npx"
+args = ["-y", "@modelcontextprotocol/server-memory"]
+enabled = false
+
+[mcp_servers.memory.sandbox]
+mode = "workspace-write"
+filesystem = ["~/.trae/mcp-memory/"]
+network = "none"
+env_allowlist = []
+timeout = 30
+max_memory_mb = 128
+
+# Brave Search —— 联网搜索（需 BRAVE_API_KEY）
+[mcp_servers.brave_search]
+command = "npx"
+args = ["-y", "@modelcontextprotocol/server-brave-search"]
+env = { BRAVE_API_KEY = "${BRAVE_API_KEY}" }
+enabled = false
+
+[mcp_servers.brave_search.sandbox]
+mode = "none"
+filesystem = []
+network = "allowlist"
+network_allowlist = ["api.search.brave.com"]
+env_allowlist = ["BRAVE_API_KEY"]
+timeout = 30
+max_memory_mb = 128
+
+# Sentry —— 线上错误追踪（需 SENTRY_AUTH_TOKEN）
+[mcp_servers.sentry]
+command = "npx"
+args = ["-y", "@sentry/mcp-server"]
+env = { SENTRY_AUTH_TOKEN = "${SENTRY_AUTH_TOKEN}" }
+enabled = false
+
+[mcp_servers.sentry.sandbox]
+mode = "none"
+filesystem = []
+network = "allowlist"
+network_allowlist = ["sentry.io"]
+env_allowlist = ["SENTRY_AUTH_TOKEN"]
+timeout = 30
+max_memory_mb = 128
+
+# Linear —— Issue / Project 管理
+# 需 LINEAR_API_KEY
+[mcp_servers.linear]
+command = "npx"
+args = ["-y", "@linear/mcp-server"]
+env = { LINEAR_API_KEY = "${LINEAR_API_KEY}" }
+enabled = false
+
+[mcp_servers.linear.sandbox]
+mode = "none"
+filesystem = []
+network = "allowlist"
+network_allowlist = ["api.linear.app"]
+env_allowlist = ["LINEAR_API_KEY"]
+timeout = 30
+max_memory_mb = 128
+
+# Slack —— 频道 / 消息访问
+# 需 SLACK_BOT_TOKEN
+[mcp_servers.slack]
+command = "npx"
+args = ["-y", "@modelcontextprotocol/server-slack"]
+env = { SLACK_BOT_TOKEN = "${SLACK_BOT_TOKEN}" }
+enabled = false
+
+[mcp_servers.slack.sandbox]
+mode = "none"
+filesystem = []
+network = "allowlist"
+network_allowlist = ["slack.com", "www.slack.com"]
+env_allowlist = ["SLACK_BOT_TOKEN"]
+timeout = 30
+max_memory_mb = 128
+
+# Profile 示例：不同任务用不同模型配置
+# [profiles.review]
+# model = "o3"
+# approval_mode = "suggest"
+#
+# [profiles.refactor]
+# model = "gpt-5.4"
+# approval_mode = "auto-edit"
