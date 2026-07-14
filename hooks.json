@@ -1,0 +1,90 @@
+{
+  "$schema": "https://trae.ai/schema/hooks.schema.json",
+  "_comment": "Trae Hooks 配置（独立于 config.toml）。脚本在 .trae/hooks/，定义见 .trae/hooks.md。",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "_comment": "文件写入前：禁止文件 / 需审批文件",
+        "matcher": "write_file|edit_file|apply_patch|update_plan",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".trae/hooks/pre_write.sh",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "_comment": "命令执行前：危险命令阻断",
+        "matcher": "bash|exec|shell|run_command",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".trae/hooks/pre_exec.sh",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "_comment": "git commit 前：测试 + ruff + commit 信息格式",
+        "matcher": "git_commit|git",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".trae/hooks/pre_commit.sh",
+            "timeout": 300
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "_comment": "文件写入后：审计留痕（轻量，不跑 format 避免过度干预）",
+        "matcher": "write_file|edit_file|apply_patch",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".trae/hooks/post_write.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "_comment": "用户提交 prompt 前：可选敏感信息扫描（默认空实现）",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".trae/hooks/pre_prompt.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "_comment": "会话启动：注入项目上下文 / 加载规则",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".trae/hooks/session_start.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "_comment": "会话结束：写摘要到 audit.log",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".trae/hooks/session_stop.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}
